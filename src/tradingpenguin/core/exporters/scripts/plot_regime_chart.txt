@@ -1,0 +1,135 @@
+Option Explicit
+
+Private Const TICKER_NAME As String = "VWRA.L"
+Private Const REGIME_CHART_NAME As String = "RegimeChart"
+Private Const BULLISH_LABEL As String = "Bullish", BEARISH_LABEL As String = "Bearish", NEUTRAL_LABEL As String = "Neutral"
+Private Const COLUMNNAME_DATE As String = "Date", COLUMNNAME_CLOSE As String = "Close", COLUMNNAME_LABEL As String = "GMM_Label"
+Private columnDate As Long, columnClose As Long, columnLabel As Long
+
+Public Sub Create_Regime_Plot()
+    
+    Dim ws As Worksheet
+    Set ws = ThisWorkbook.Worksheets(TICKER_NAME & "_regime")
+    
+    columnDate = LocateColumnByName(ws, COLUMNNAME_DATE)
+    columnClose = LocateColumnByName(ws, COLUMNNAME_CLOSE)
+    columnLabel = LocateColumnByName(ws, COLUMNNAME_LABEL)
+    
+    With ws
+        Dim lastRow As Long
+        lastRow = .Cells(Rows.Count, columnDate).End(xlUp).Row
+        
+        On Error Resume Next
+        .ChartObjects(REGIME_CHART_NAME).Delete
+        On Error GoTo 0
+        
+        Dim chartObj As ChartObject, cht As Chart
+        Set chartObj = .ChartObjects.Add(Left:=50, Top:=50, Width:=1400, Height:=500)
+        chartObj.Name = REGIME_CHART_NAME
+        Set cht = chartObj.Chart
+        
+        With cht
+            .ChartType = xlXYScatterLines
+            .HasTitle = True
+            .ChartTitle.Text = TICKER_NAME & " Price with GMM Regimes (Walk-Forward Validated)"
+            .ChartTitle.Font.Size = 14
+            .ChartTitle.Font.Bold = True
+            .HasLegend = True
+            .Legend.Position = xlLegendPositionTop
+            
+            With .Axes(xlCategory)
+                .HasTitle = True
+                .AxisTitle.Text = "Date"
+                .AxisTitle.Font.Size = 12
+                .TickLabels.NumberFormat = "dd-mmm-yyyy"
+                .TickLabels.Font.Size = 10
+            End With
+            
+            With .Axes(xlValue)
+                .HasTitle = True
+                .AxisTitle.Text = "Price ($)"
+                .AxisTitle.Font.Size = 12
+                .HasMajorGridlines = True
+                .MajorGridlines.Format.Line.ForeColor.RGB = RGB(217, 217, 217)
+            End With
+            
+            Dim ser As Series
+            Set ser = .SeriesCollection.newSeries
+            
+            With ser
+                .Name = "Price"
+                .XValues = ws.Range("B2:B" & lastRow)
+                .Values = ws.Range("G2:G" & lastRow)
+    
+                .Format.Line.Weight = 1.5
+                .Format.Line.ForeColor.RGB = RGB(128, 128, 128)
+                .MarkerStyle = xlMarkerStyleCircle
+                .MarkerSize = 2
+    
+                .HasDataLabels = False
+            End With
+            
+            Call AddRegimeSeries(cht, ws, lastRow, BULLISH_LABEL, RGB(0, 176, 80))
+            Call AddRegimeSeries(cht, ws, lastRow, BEARISH_LABEL, RGB(255, 0, 0))
+            Call AddRegimeSeries(cht, ws, lastRow, NEUTRAL_LABEL, RGB(128, 128, 128))
+        End With
+    End With
+End Sub
+
+Private Sub AddRegimeSeries(ByVal cht As Chart, ByVal ws As Worksheet, ByVal lastRow As Long, ByVal regimeType As String, ByVal markerColor As Long)
+    Dim i As Long
+    Dim xVals As String, yVals As String
+    Dim currentRegime As String
+    Dim pointCount As Long
+    
+    Dim xArray() As Double, yArray() As Double
+    ReDim xArray(1 To lastRow - 1)
+    ReDim yArray(1 To lastRow - 1)
+    
+    pointCount = 0
+    For i = 2 To lastRow
+        currentRegime = Application.Trim(ws.Cells(i, columnLabel).Value)
+        
+        If currentRegime = regimeType Then
+            pointCount = pointCount + 1
+            xArray(pointCount) = ws.Cells(i, columnDate).Value
+            yArray(pointCount) = ws.Cells(i, columnClose).Value
+        End If
+    Next i
+    
+    If pointCount > 0 Then
+        ReDim Preserve xArray(1 To pointCount)
+        ReDim Preserve yArray(1 To pointCount)
+        
+        Dim ser As Series
+        Set ser = cht.SeriesCollection.newSeries
+        
+        With ser
+            .Name = regimeType
+            .XValues = xArray
+            .Values = yArray
+            .Format.Line.Visible = msoFalse
+            .MarkerStyle = xlMarkerStyleCircle
+            .MarkerSize = 3
+            .MarkerForegroundColor = markerColor
+            .MarkerBackgroundColor = markerColor
+            
+            .HasDataLabels = False
+        End With
+    End If
+End Sub
+
+Private Function LocateColumnByName(ByVal ws As Worksheet, ByVal columnName As String) As Long
+    Dim findRg As Range
+    
+    With ws
+        Set findRg = .Rows(1).Find(What:=columnName, LookIn:=xlValues, LookAt:=xlWhole, SearchOrder:=xlByColumns, SearchDirection:=xlNext, MatchCase:=False)
+    End With
+    
+    If Not findRg Is Nothing Then
+        LocateColumnByName = findRg.Column
+    Else
+        LocateColumnByName = 0
+    End If
+    
+End Function
